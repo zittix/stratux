@@ -11,6 +11,7 @@ package main
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -21,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 //-0b2b48fe3aef1f88621a0856110a31c01105c4e6c4e6c40a9a820300000000000000;rs=7;
@@ -153,6 +156,9 @@ var trafficMutex *sync.Mutex
 var seenTraffic map[uint32]bool // Historical list of all ICAO addresses seen.
 
 var OwnshipTrafficInfo TrafficInfo
+
+var planeRegs *sql.DB
+var planeRegQuery *sql.DB
 
 func cleanupOldEntries() {
 	for icao_addr, ti := range traffic {
@@ -1151,6 +1157,22 @@ func updateDemoTraffic(icao uint32, tail string, relAlt float32, gs float64, off
 	}
 }
 
+func openPlaneRegsDB() {
+	var planeDBFile = "/usr/lib/stratux/plane_regs.sqlite3"
+	planeRegs, err := sql.Open("sqlite3", planeDBFile)
+	if err != nil {
+		log.Printf("sql.Open for plane registration database: %s\n", err.Error())
+		return false
+	}
+	planeRegQuery, err = db.Prepare("select registration from plane_registrations where transponder = ?")
+	if err != nil {
+		log.Printf("sql.Prepare for plane registration database: %s\n", err.Error()
+		sql.Close(planeDBFile)
+		planeDBFile = nil
+		return false
+	}
+}
+
 /*
 	icao2reg() : Converts 24-bit Mode S addresses to N-numbers and C-numbers.
 
@@ -1194,8 +1216,21 @@ func icao2reg(icao_addr uint32) (string, bool) {
 	} else if (icao_addr >= 0x7C0000) && (icao_addr <= 0x7FFFFF) {
 		nation = "AU"
 	} else {
-		//TODO: future national decoding.
-		return "OTHER", false
+		// Lookup our database
+		if planeDBFile == nil {
+			openPlaneRegsDB()
+		}
+		if planeRegQuery != nil {
+			var name string
+			err = stmt.QueryRow(icao_addr).Scan(&name)
+			if err != nil {
+				log.Printf("Error while doing plane registration query: %s\n", err.Error())
+				return "NON-NA", false
+			}
+			if name {
+				return name, true
+			}
+		}
 	}
 
 	if nation == "CA" { // Canada decoding

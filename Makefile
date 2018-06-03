@@ -56,6 +56,8 @@ install:
 	cp -f dump1090/dump1090 /usr/bin/
 	cp -f image/hostapd_manager.sh /usr/sbin/
 	cp -f image/stratux-wifi.sh /usr/sbin/
+	if [ ! -d /usr/lib/stratux ]; then mkdir -p /usr/lib/stratux; fi
+	cp -f main/plane_regs.sqlite3 /usr/lib/stratux/
 
 clean:
 	rm -f gen_gdl90 libdump978.so fancontrol ahrs_approx
