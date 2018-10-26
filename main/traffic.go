@@ -1166,20 +1166,21 @@ func updateDemoTraffic(icao uint32, tail string, relAlt float32, gs float64, off
 	}
 }
 
-func openPlaneRegsDB() {
+func openPlaneRegsDB() bool {
 	var planeDBFile = "/usr/lib/stratux/plane_regs.sqlite3"
 	planeRegs, err := sql.Open("sqlite3", planeDBFile)
 	if err != nil {
 		log.Printf("sql.Open for plane registration database: %s\n", err.Error())
 		return false
 	}
-	planeRegQuery, err = db.Prepare("select registration from plane_registrations where transponder = ?")
+	planeRegQuery, err = planeRegs.Prepare("select registration from plane_registrations where transponder = ?")
 	if err != nil {
 		log.Printf("sql.Prepare for plane registration database: %s\n", err.Error())
-		sql.Close(planeDBFile)
-		planeDBFile = nil
+		planeRegs.Close()
+		planeRegs = nil
 		return false
 	}
+	return true
 }
 
 /*
@@ -1226,12 +1227,12 @@ func icao2reg(icao_addr uint32) (string, bool) {
 		nation = "AU"
 	} else {
 		// Lookup our database
-		if planeDBFile == nil {
+		if planeRegs == nil {
 			openPlaneRegsDB()
 		}
 		if planeRegQuery != nil {
 			var name string
-			err = stmt.QueryRow(icao_addr).Scan(&name)
+			err = planeRegQuery.QueryRow(icao_addr).Scan(&name)
 			if err != nil {
 				log.Printf("Error while doing plane registration query: %s\n", err.Error())
 				return "NON-NA", false
