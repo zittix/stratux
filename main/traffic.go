@@ -1168,6 +1168,7 @@ func updateDemoTraffic(icao uint32, tail string, relAlt float32, gs float64, off
 
 func openPlaneRegsDB() bool {
 	var planeDBFile = "/usr/lib/stratux/plane_regs.sqlite3"
+	log.Printf("Opening plane registratin database at %s...\n", planeDBFile)
 	planeRegs, err := sql.Open("sqlite3", planeDBFile)
 	if err != nil {
 		log.Printf("sql.Open for plane registration database: %s\n", err.Error())
@@ -1227,9 +1228,6 @@ func icao2reg(icao_addr uint32) (string, bool) {
 		nation = "AU"
 	} else {
 		// Lookup our database
-		if planeRegs == nil {
-			openPlaneRegsDB()
-		}
 		if planeRegQuery != nil {
 			var name string
 			err := planeRegQuery.QueryRow(icao_addr).Scan(&name)
@@ -1368,6 +1366,7 @@ func initTraffic() {
 	traffic = make(map[uint32]TrafficInfo)
 	seenTraffic = make(map[uint32]bool)
 	trafficMutex = &sync.Mutex{}
+	openPlaneRegsDB()
 	go esListen()
 	go flarmListen()
 }
