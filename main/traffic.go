@@ -159,7 +159,7 @@ var seenTraffic map[uint32]bool // Historical list of all ICAO addresses seen.
 var OwnshipTrafficInfo TrafficInfo
 
 var planeRegs *sql.DB
-var planeRegQuery *sql.DB
+var planeRegQuery *sql.Stmt
 
 func convertFeetToMeters(feet float32) float32 {
 	return feet * 0.3048
