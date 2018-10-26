@@ -1175,7 +1175,7 @@ func openPlaneRegsDB() {
 	}
 	planeRegQuery, err = db.Prepare("select registration from plane_registrations where transponder = ?")
 	if err != nil {
-		log.Printf("sql.Prepare for plane registration database: %s\n", err.Error()
+		log.Printf("sql.Prepare for plane registration database: %s\n", err.Error())
 		sql.Close(planeDBFile)
 		planeDBFile = nil
 		return false
