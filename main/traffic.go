@@ -1232,14 +1232,14 @@ func icao2reg(icao_addr uint32) (string, bool) {
 		}
 		if planeRegQuery != nil {
 			var name string
-			err = planeRegQuery.QueryRow(icao_addr).Scan(&name)
+			err := planeRegQuery.QueryRow(icao_addr).Scan(&name)
 			if err != nil {
-				log.Printf("Error while doing plane registration query: %s\n", err.Error())
+				if err != sql.ErrNoRows {
+					log.Printf("Error while doing plane registration query: %s\n", err.Error())
+				}
 				return "NON-NA", false
 			}
-			if name {
-				return name, true
-			}
+			return name, true
 		}
 	}
 
