@@ -58,7 +58,7 @@ async def get_plane(plane_id, sem):
             transponder = plane_det['details']['aircraftAddresses']['hex'].lower()
             if transponder != 'n/a':
                 trans_numb = int("0x"+transponder, 0)
-                ret = c2.execute('INSERT INTO plane_registrations VALUES (?,?,?,?,?)', (plane_id,trans_numb, plane_det['manufacturer'], plane_det['aircraftModelType'], plane_det['icaoCode']))
+                ret = c2.execute('INSERT INTO plane_registrations VALUES (?,?,?,?,?)', (plane_id.strip(),trans_numb, plane_det['manufacturer'].strip(), plane_det['aircraftModelType'].strip(), plane_det['icaoCode'].strip()))
                 print("{}: {}".format(trans_numb, plane_id))
                 c2 = conn.cursor()
                 c2.execute('SELECT * FROM plane_registrations WHERE registration=?', (plane_id,))
