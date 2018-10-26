@@ -66,6 +66,7 @@ AUXSV:
 const (
 	TRAFFIC_SOURCE_1090ES = 1
 	TRAFFIC_SOURCE_UAT    = 2
+	TRAFFIC_SOURCE_FLARM  = 4
 	TARGET_TYPE_MODE_S    = 0
 	TARGET_TYPE_ADSB      = 1
 	TARGET_TYPE_ADSR      = 2
@@ -159,6 +160,14 @@ var OwnshipTrafficInfo TrafficInfo
 
 var planeRegs *sql.DB
 var planeRegQuery *sql.DB
+
+func convertFeetToMeters(feet float32) float32 {
+	return feet * 0.3048
+}
+
+func convertMetersToFeet(meters float32) float32 {
+	return meters / 0.3048
+}
 
 func cleanupOldEntries() {
 	for icao_addr, ti := range traffic {
@@ -1359,4 +1368,5 @@ func initTraffic() {
 	seenTraffic = make(map[uint32]bool)
 	trafficMutex = &sync.Mutex{}
 	go esListen()
+	go flarmListen()
 }

@@ -15,7 +15,7 @@ all:
 
 xgen_gdl90:
 	go get -t -d -v ./main ./godump978 ./uatparse ./sensors
-	go build $(BUILDINFO) -p 4 main/gen_gdl90.go main/traffic.go main/gps.go main/network.go main/managementinterface.go main/sdr.go main/ping.go main/uibroadcast.go main/monotonic.go main/datalog.go main/equations.go main/sensors.go main/cputemp.go main/lowpower_uat.go
+	export CGO_CFLAGS_ALLOW="-L/root/stratux" && go build $(BUILDINFO) -p 4 main/gen_gdl90.go main/traffic.go main/gps.go main/network.go main/managementinterface.go main/sdr.go main/ping.go main/uibroadcast.go main/monotonic.go main/datalog.go main/equations.go main/sensors.go main/cputemp.go main/flarm.go
 
 fancontrol:
 	go get -t -d -v ./main
@@ -31,7 +31,7 @@ xdump978:
 
 .PHONY: test
 test:
-	make -C test	
+	make -C test
 
 www:
 	cd web && make
@@ -58,6 +58,11 @@ install:
 	cp -f image/stratux-wifi.sh /usr/sbin/
 	if [ ! -d /usr/lib/stratux ]; then mkdir -p /usr/lib/stratux; fi
 	cp -f main/plane_regs.sqlite3 /usr/lib/stratux/
+	rm -f /var/run/ogn-rf.fifo
+	mkfifo /var/run/ogn-rf.fifo
+	cp -f ogn/rtlsdr-ogn/ogn-rf /usr/bin/
+	chmod a+s /usr/bin/ogn-rf
+	cp -f ogn/rtlsdr-ogn/ogn-decode /usr/bin/
 
 clean:
 	rm -f gen_gdl90 libdump978.so fancontrol ahrs_approx
