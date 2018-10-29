@@ -1,16 +1,19 @@
+// +build !mock
+
 package main
 
 import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/takama/daemon"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/takama/daemon"
 )
 
 // #include <wiringPi.h>

@@ -6,8 +6,18 @@ else
 	LDFLAGS_VERSION=-X main.stratuxVersion=`git describe --tags --abbrev=0` -X main.stratuxBuild=`git log -n 1 --pretty=%H`
 	BUILDINFO=-ldflags "$(LDFLAGS_VERSION)"
 	BUILDINFO_STATIC=-ldflags "-extldflags -static $(LDFLAGS_VERSION)"
-$(if $(GOROOT),,$(error GOROOT is not set!))
+#$(if $(GOROOT),,$(error GOROOT is not set!))
 	PLATFORMDEPENDENT=fancontrol
+endif
+
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+	TAGS=-tags mock
+	MOCK_BUILD=1
+	PLATFORMDEPENDENT=
+else
+	TAGS=""
+	MOCK_BUILD=0
 endif
 
 all:
@@ -15,19 +25,20 @@ all:
 
 xgen_gdl90:
 	go get -t -d -v ./main ./godump978 ./uatparse ./sensors
-	export CGO_CFLAGS_ALLOW="-L/root/stratux" && go build $(BUILDINFO) -p 4 main/gen_gdl90.go main/traffic.go main/gps.go main/network.go main/managementinterface.go main/sdr.go main/ping.go main/uibroadcast.go main/monotonic.go main/datalog.go main/equations.go main/sensors.go main/cputemp.go main/lowpower_uat.go main/flarm.go
+	export CGO_CFLAGS_ALLOW="-L/Users/mathieu/Dropbox/stratux" && \
+	cd main && \
+	go build -o ../gen_gdl90 $(BUILDINFO) $(TAGS)
 
 fancontrol:
 	go get -t -d -v ./main
 	go build $(BUILDINFO_STATIC) -p 4 main/fancontrol.go main/equations.go main/cputemp.go
 
 xdump1090:
-	git submodule update --init
+	#git submodule update --init
 	cd dump1090 && make
 
 xdump978:
 	cd dump978 && make lib
-	sudo cp -f ./libdump978.so /usr/lib/libdump978.so
 
 .PHONY: test
 test:
@@ -52,7 +63,6 @@ install:
 	chmod 744 /root/stratux-pre-start.sh
 	ln -fs /lib/systemd/system/stratux.service /etc/systemd/system/multi-user.target.wants/stratux.service
 	make www
-	cp -f libdump978.so /usr/lib/libdump978.so
 	cp -f dump1090/dump1090 /usr/bin/
 	cp -f image/hostapd_manager.sh /usr/sbin/
 	cp -f image/stratux-wifi.sh /usr/sbin/
@@ -63,6 +73,7 @@ install:
 	cp -f ogn/rtlsdr-ogn/ogn-rf /usr/bin/
 	chmod a+s /usr/bin/ogn-rf
 	cp -f ogn/rtlsdr-ogn/ogn-decode /usr/bin/
+	cp -f ./libdump978.so /usr/lib/libdump978.so
 
 clean:
 	rm -f gen_gdl90 libdump978.so fancontrol ahrs_approx

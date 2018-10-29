@@ -12,7 +12,7 @@ import (
 	"../goflying/ahrsweb"
 	"../sensors"
 	"github.com/kidoman/embd"
-	_ "github.com/kidoman/embd/host/all"
+	//_ "github.com/kidoman/embd/host/generic"
 )
 
 const (
