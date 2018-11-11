@@ -1258,7 +1258,7 @@ func saveSettings() {
 func readWiFiUserSettings() {
 	fd, err := os.Open(wifiConfigLocation)
 	if err != nil {
-		log.Printf("can't read wifi settings %s: %s\n", wifiConfigLocation,     err.Error())
+		log.Printf("can't read wifi settings %s: %s\n", wifiConfigLocation, err.Error())
 		return
 	}
 	defer fd.Close()
@@ -1305,6 +1305,15 @@ func saveWiFiUserSettings() {
 		fmt.Fprintf(writer, "wpa_passphrase=%s\n", globalSettings.WiFiPassphrase)
 	}
 	writer.Flush()
+}
+
+func (s *settings) hasConnectionWithCapability(capabilities uint8) bool {
+	for _, conn := range s.NetworkOutputs {
+		if conn.Capability&capabilities != 0 {
+			return true
+		}
+	}
+	return false
 }
 
 func openReplay(fn string, compressed bool) (WriteCloser, error) {
