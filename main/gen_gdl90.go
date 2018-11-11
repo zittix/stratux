@@ -1634,6 +1634,7 @@ func main() {
 
 	// Initialize the (out) network handler.
 	initNetwork()
+	go tcpNMEAListener()
 
 	// Start printing stats periodically to the logfiles.
 	go printStats()

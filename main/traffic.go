@@ -195,6 +195,8 @@ func sendTrafficUpdates() {
 	}
 
 	msgs := make([][]byte, 1)
+	msgFLARM := ""
+	numFLARMTargets := 0
 	if globalSettings.DEBUG && (stratuxClock.Time.Second()%15) == 0 {
 		log.Printf("List of all aircraft being tracked:\n")
 		log.Printf("==================================================================\n")
@@ -248,6 +250,15 @@ func sendTrafficUpdates() {
 					msgs = append(msgs, make([]byte, 0))
 				}
 				msgs[cur_n] = append(msgs[cur_n], makeTrafficReportMsg(ti)...)
+
+				thisMsgFLARM, validFLARM := makeFlarmPFLAAString(ti)
+				if validFLARM {
+					msgFLARM = msgFLARM + thisMsgFLARM
+					numFLARMTargets++
+					//log.Printf(thisMsgFLARM)
+				} else {
+					log.Printf("FLARM output: Traffic %X couldn't be translated\n", ti.Icao_addr)
+				}
 			}
 		}
 	}
@@ -258,6 +269,21 @@ func sendTrafficUpdates() {
 			sendGDL90(msg, false)
 		}
 	}
+
+	// netFLARM messages:
+	sendNetFLARM(makeGPRMCString())
+	if len(msgFLARM) > 0 {
+		sendNetFLARM(msgFLARM)
+	}
+
+	msgPFLAU := fmt.Sprintf("PFLAU,%d,1,2,1,1,,0,,", numFLARMTargets)
+
+	checksumPFLAU := byte(0x00)
+	for i := range msgPFLAU {
+		checksumPFLAU = checksumPFLAU ^ byte(msgPFLAU[i])
+	}
+	msgPFLAU = (fmt.Sprintf("$%s*%02X\r\n", msgPFLAU, checksumPFLAU))
+	sendNetFLARM(msgPFLAU)
 }
 
 // Send update to attached JSON client.
