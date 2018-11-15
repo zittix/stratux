@@ -35,6 +35,57 @@ func sendNetFLARM(msg string) {
 
 }
 
+func makeFlarmPFLAU(nbTraffic int) (msg string) {
+	isSendingFLARM := 1
+	gps := 2 /* 0=no GPS, 1=2D fix, 2=3D Fix */
+	power := 1
+	alarm := 0 /* Hexadecimal value. Range: from 0 to FF.
+
+	Type of alarm as assessed by FLARM
+	0 = no aircraft within range or no-alarm traffic information
+	2 = aircraft alarm
+	3 = obstacle/Alert Zone alarm
+	When data port >=7, the type of Alert Zone is sent as <AlarmType> in the range 10..FF. Refer to the <ZoneType> parameter in the PFLAO sentence for a description.
+	*/
+
+	/* PFLAU,<RX>,<TX>,<GPS>,<Power>,<AlarmLevel>,<RelativeBearing>, <AlarmType>,<RelativeVertical>,<RelativeDistance>,<ID> */
+	msg = fmt.Sprintf("PFLAU,%d,%d,%d,%d,0,,%d,,,,", nbTraffic, isSendingFLARM, gps, power, alarm)
+	checksum := byte(0)
+	for i := range msg {
+		checksum = checksum ^ byte(msg[i])
+	}
+	msg = (fmt.Sprintf("$%s*%02X\r\n", msg, checksum))
+
+	msg = msg
+	return
+}
+
+func makeFlarmPGRMZ(altitudeBaro int32) (msg string) {
+
+	/* PGRMZ,<Value>,F,2 baro atltide in feet, signed */
+	msg = fmt.Sprintf("PGRMZ,%d,F,2", altitudeBaro)
+	checksum := byte(0)
+	for i := range msg {
+		checksum = checksum ^ byte(msg[i])
+	}
+	msg = (fmt.Sprintf("$%s*%02X\r\n", msg, checksum))
+
+	return
+}
+
+func makeFlarmGPGSA() (msg string) {
+
+	/* PGRMZ,<Value>,F,2 baro atltide in feet, signed */
+	msg = fmt.Sprintf("GPGSA,A,3,,,,,,16,18,,22,24,,,3.6,2.1,2.2")
+	checksum := byte(0)
+	for i := range msg {
+		checksum = checksum ^ byte(msg[i])
+	}
+	msg = (fmt.Sprintf("$%s*%02X\r\n", msg, checksum))
+
+	return
+}
+
 /*
 	makeFlarmPFLAAString() creates a NMEA-formatted PFLAA string (FLARM traffic format) with checksum from the referenced
 		traffic object.
@@ -152,7 +203,7 @@ func makeFlarmPFLAAString(ti TrafficInfo) (msg string, valid bool) {
 	}
 
 	msg2 = (fmt.Sprintf("$%s*%02X\r\n", msg2, checksum))
-	msg = msg + msg2
+	msg = msg
 	valid = true
 	return
 }
@@ -248,7 +299,7 @@ func makeGPRMCString() string {
 		msg = fmt.Sprintf("GPRMC,,%s,,,,,,,%02d%02d%02d,%s,%s,%s", status, dd, mm, yy, magVar, mvEW, mode) // return null lat-lng and velocity if invalid GPS
 	}
 
-	var checksum byte
+	var checksum byte = 0
 	for i := range msg {
 		checksum = checksum ^ byte(msg[i])
 	}

@@ -272,18 +272,16 @@ func sendTrafficUpdates() {
 
 	// netFLARM messages:
 	sendNetFLARM(makeGPRMCString())
+	sendNetFLARM(makeGPGGAString())
+	sendNetFLARM(makeFlarmPGRMZ(5000))
+	sendNetFLARM(makeFlarmGPGSA())
+	msgPFLAU := makeFlarmPFLAU(numFLARMTargets)
+
+	sendNetFLARM(msgPFLAU)
 	if len(msgFLARM) > 0 {
 		sendNetFLARM(msgFLARM)
 	}
 
-	msgPFLAU := fmt.Sprintf("PFLAU,%d,1,2,1,1,,0,,", numFLARMTargets)
-
-	checksumPFLAU := byte(0x00)
-	for i := range msgPFLAU {
-		checksumPFLAU = checksumPFLAU ^ byte(msgPFLAU[i])
-	}
-	msgPFLAU = (fmt.Sprintf("$%s*%02X\r\n", msgPFLAU, checksumPFLAU))
-	sendNetFLARM(msgPFLAU)
 }
 
 // Send update to attached JSON client.

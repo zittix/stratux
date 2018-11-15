@@ -737,6 +737,36 @@ func blinkStatusLED() {
 	}
 }
 
+var lat_demo float32 = 46.54
+
+func updateDemoGPS() {
+	lat_demo += 0.001
+	globalStatus.GPS_connected = true
+	h, m, sec := stratuxClock.Time.UTC().Clock()
+	mySituation.GPSLastFixSinceMidnightUTC = float32(h*60*60 + m*60 + sec)
+	mySituation.GPSLatitude = lat_demo
+	mySituation.GPSLongitude = 6.616666667
+	mySituation.GPSFixQuality = 2
+	mySituation.GPSHeightAboveEllipsoid = 2000 // GPS height above WGS84 ellipsoid, ft. This is specified by the GDL90 protocol, but most EFBs use MSL altitude instead. HAE is about 70-100 ft below GPS MSL altitude over most of the US.
+	mySituation.GPSGeoidSep = 3000             // geoid separation, ft, MSL minus HAE (used in altitude calculation)
+	mySituation.GPSSatellites = 5              // satellites used in solution
+	mySituation.GPSSatellitesTracked = 10      // satellites tracked (almanac data received)
+	mySituation.GPSSatellitesSeen = 13         // satellites seen (signal received)
+	mySituation.GPSHorizontalAccuracy = 10     // 95% confidence for horizontal position, meters.
+	mySituation.GPSNACp = 10                   // NACp categories are defined in AC 20-165A
+	mySituation.GPSAltitudeMSL = 5000          // Feet MSL
+	mySituation.GPSVerticalAccuracy = 100      // 95% confidence for vertical position, meters
+	mySituation.GPSVerticalSpeed = 0           // GPS vertical velocity, feet per second
+	mySituation.GPSLastFixLocalTime = stratuxClock.Time
+	mySituation.GPSTrueCourse = 0
+	mySituation.GPSTurnRate = 0 // calculated GPS rate of turn, degrees per second
+	mySituation.GPSGroundSpeed = 100
+	mySituation.GPSLastGroundTrackTime = stratuxClock.Time
+	mySituation.GPSTime = stratuxClock.Time
+	mySituation.GPSLastGPSTimeStratuxTime = stratuxClock.Time
+	mySituation.GPSLastValidNMEAMessageTime = stratuxClock.Time
+}
+
 func heartBeatSender() {
 	timer := time.NewTicker(1 * time.Second)
 	timerMessageStats := time.NewTicker(2 * time.Second)
@@ -767,20 +797,20 @@ func heartBeatSender() {
 
 			// --- debug code: traffic demo ---
 			// Uncomment and compile to display large number of artificial traffic targets
-			/*
-				numTargets := uint32(36)
-				hexCode := uint32(0xFF0000)
 
-				for i := uint32(0); i < numTargets; i++ {
-					tail := fmt.Sprintf("DEMO%d", i)
-					alt := float32((i*117%2000)*25 + 2000)
-					hdg := int32((i * 149) % 360)
-					spd := float64(50 + ((i*23)%13)*37)
+			updateDemoGPS()
+			numTargets := uint32(36)
+			hexCode := uint32(0xFF0000)
 
-					updateDemoTraffic(i|hexCode, tail, alt, spd, hdg)
+			for i := uint32(0); i < numTargets; i++ {
+				tail := fmt.Sprintf("DEMO%d", i)
+				alt := float32((i*117%2000)*25 + 2000)
+				hdg := int32((i * 149) % 360)
+				spd := float64(50 + ((i*23)%13)*37)
 
-				}
-			*/
+				updateDemoTraffic(i|hexCode, tail, alt, spd, hdg)
+
+			}
 
 			// ---end traffic demo code ---
 			sendTrafficUpdates()
@@ -1525,7 +1555,7 @@ func main() {
 		globalStatus.HardwareBuild = "FlightBox"
 		logDirf = logDir_FB
 	} else { // if not using the FlightBox config, use "normal" log file locations
-		logDirf = logDir
+		logDirf = "."
 	}
 	//Merlin: detect presence of /etc/Merlin file.
 	if _, err := os.Stat("/etc/Merlin"); !os.IsNotExist(err) {
