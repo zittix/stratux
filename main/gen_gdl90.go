@@ -75,8 +75,9 @@ const (
 	MSGTYPE_BASIC_REPORT = 0x1E
 	MSGTYPE_LONG_REPORT  = 0x1F
 
-	MSGCLASS_UAT = 0
-	MSGCLASS_ES  = 1
+	MSGCLASS_UAT       = 0
+	MSGCLASS_ES        = 1
+	MSGCLASS_ESRANGING = 2
 
 	LON_LAT_RESOLUTION = float32(180.0 / 8388608.0)
 	TRACK_RESOLUTION   = float32(360.0 / 256.0)
@@ -804,7 +805,7 @@ func heartBeatSender() {
 
 			for i := uint32(0); i < numTargets; i++ {
 				tail := fmt.Sprintf("DEMO%d", i)
-				alt := float32((i*117%2000)*25 + 2000)
+				alt := float32((i*117%2000)*25 + 10)
 				hdg := int32((i * 149) % 360)
 				spd := float64(50 + ((i*23)%13)*37)
 
@@ -1128,6 +1129,7 @@ func getProductNameFromId(product_id int) string {
 type settings struct {
 	UAT_Enabled          bool
 	ES_Enabled           bool
+	ESRanging_Enabled    bool
 	FLARM_Enabled        bool
 	Ping_Enabled         bool
 	GPS_Enabled          bool
@@ -1143,6 +1145,8 @@ type settings struct {
 	SensorQuaternion     [4]float64 // Quaternion mapping from sensor frame to aircraft frame
 	C, D                 [3]float64 // IMU Accel, Gyro zero bias
 	PPM                  int
+	Gain                 float64
+	GainRangingSDR       float64
 	OwnshipModeS         string
 	WatchList            string
 	DeveloperMode        bool
@@ -1225,6 +1229,9 @@ func defaultSettings() {
 	globalSettings.OwnshipModeS = "F00000"
 	globalSettings.DeveloperMode = false
 	globalSettings.StaticIps = make([]string, 0)
+	globalSettings.Gain = -1
+	globalSettings.GainRangingSDR = -1
+	globalSettings.ESRanging_Enabled = false
 }
 
 func readSettings() {
