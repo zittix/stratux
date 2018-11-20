@@ -86,7 +86,7 @@ type TrafficInfo struct {
 	OnGround            bool      // Air-ground status. On-ground is "true".
 	Addr_type           uint8     // UAT address qualifier. Used by GDL90 format, so translations for ES TIS-B/ADS-R are needed.
 	TargetType          uint8     // types decribed in const above
-	SignalLevel         float64   // Signal level, dB RSSI.
+	SignalLevel         []float64 // Signal level, dB RSSI.
 	Squawk              int       // Squawk code
 	Position_valid      bool      //TODO: set when position report received. Unset after n seconds?
 	Lat                 float32   // decimal degrees, north positive
@@ -160,6 +160,13 @@ var OwnshipTrafficInfo TrafficInfo
 
 var planeRegs *sql.DB
 var planeRegQuery *sql.Stmt
+
+func (t *TrafficInfo) addSignalLevelMeasurement(m float64) {
+	if len(t.SignalLevel) >= 50 {
+		t.SignalLevel = t.SignalLevel[1:]
+	}
+	t.SignalLevel = append(t.SignalLevel, m)
+}
 
 func convertFeetToMeters(feet float32) float32 {
 	return feet * 0.3048
@@ -573,7 +580,7 @@ func parseDownlinkReport(s string, signalLevel int) {
 	}
 	//log.Printf("%s (%X) seen with amplitude of %d, corresponding to normalized power of %f.2 dB\n",ti.Tail,ti.Icao_addr,signalLevel,power)
 
-	ti.SignalLevel = power
+	ti.addSignalLevelMeasurement(power)
 
 	if ti.Addr_type == 0 {
 		ti.TargetType = TARGET_TYPE_ADSB
@@ -837,9 +844,7 @@ func esListen() {
 			}
 
 			if newTi.SignalLevel > 0 {
-				ti.SignalLevel = 10 * math.Log10(newTi.SignalLevel)
-			} else {
-				ti.SignalLevel = -999
+				ti.addSignalLevelMeasurement(10 * math.Log10(newTi.SignalLevel))
 			}
 
 			// generate human readable summary of message types for debug
@@ -1161,11 +1166,8 @@ func esRangingListen() {
 			}
 
 			if newTi.SignalLevel > 0 {
-				ti.SignalLevel = 10 * math.Log10(newTi.SignalLevel)
-			} else {
-				ti.SignalLevel = -999
+				ti.addSignalLevelMeasurement(10 * math.Log10(newTi.SignalLevel))
 			}
-
 			ti.Timestamp = newTi.Timestamp // only update "last seen" data on position updates
 
 			traffic[ti.Icao_addr] = ti // Update information on this ICAO code.
@@ -1392,6 +1394,7 @@ func icao2reg(icao_addr uint32) (string, bool) {
 		nationalOffset := uint32(0x7C0000)
 		offset := (icao_addr - nationalOffset)
 		i1 := offset / 1296
+		go esRangingListen()
 		offset2 := offset % 1296
 		i2 := offset2 / 36
 		offset3 := offset2 % 36
