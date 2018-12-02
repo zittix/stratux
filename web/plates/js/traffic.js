@@ -49,7 +49,11 @@ function TrafficCtrl($rootScope, $scope, $state, $http, $interval) {
 	function setAircraft(obj, new_traffic) {
 		new_traffic.icao_int = obj.Icao_addr;
 		new_traffic.targettype = obj.TargetType;
-		new_traffic.signal = obj.SignalLevel;
+		if (obj.SignalLevel.length > 0) {
+			new_traffic.signal = obj.SignalLevel[obj.SignalLevel.length - 1];
+		} else {
+			new_traffic.signal = NaN;
+		}
 		new_traffic.addr_symb ='\u2708';
 		if (new_traffic.targettype > 3) {
 			new_traffic.addr_symb ='\ud83d\udce1';

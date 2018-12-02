@@ -79,29 +79,30 @@ const (
 )
 
 type TrafficInfo struct {
-	Icao_addr           uint32
-	Reg                 string    // Registration. Calculated from Icao_addr for civil aircraft of US registry.
-	Tail                string    // Callsign. Transmitted by aircraft.
-	Emitter_category    uint8     // Formatted using GDL90 standard, e.g. in a Mode ES report, A7 becomes 0x07, B0 becomes 0x08, etc.
-	OnGround            bool      // Air-ground status. On-ground is "true".
-	Addr_type           uint8     // UAT address qualifier. Used by GDL90 format, so translations for ES TIS-B/ADS-R are needed.
-	TargetType          uint8     // types decribed in const above
-	SignalLevel         []float64 // Signal level, dB RSSI.
-	Squawk              int       // Squawk code
-	Position_valid      bool      //TODO: set when position report received. Unset after n seconds?
-	Lat                 float32   // decimal degrees, north positive
-	Lng                 float32   // decimal degrees, east positive
-	Alt                 int32     // Pressure altitude, feet
-	GnssDiffFromBaroAlt int32     // GNSS altitude above WGS84 datum. Reported in TC 20-22 messages
-	AltIsGNSS           bool      // Pressure alt = 0; GNSS alt = 1
-	NIC                 int       // Navigation Integrity Category.
-	NACp                int       // Navigation Accuracy Category for Position.
-	Track               uint16    // degrees true
-	Speed               uint16    // knots
-	Speed_valid         bool      // set when speed report received.
-	Vvel                int16     // feet per minute
-	Timestamp           time.Time // timestamp of traffic message, UTC
-	PriorityStatus      uint8     // Emergency or priority code as defined in GDL90 spec, DO-260B (Type 28 msg) and DO-282B
+	Icao_addr             uint32
+	Reg                   string    // Registration. Calculated from Icao_addr for civil aircraft of US registry.
+	Tail                  string    // Callsign. Transmitted by aircraft.
+	Emitter_category      uint8     // Formatted using GDL90 standard, e.g. in a Mode ES report, A7 becomes 0x07, B0 becomes 0x08, etc.
+	OnGround              bool      // Air-ground status. On-ground is "true".
+	Addr_type             uint8     // UAT address qualifier. Used by GDL90 format, so translations for ES TIS-B/ADS-R are needed.
+	TargetType            uint8     // types decribed in const above
+	SignalLevel           []float64 // Signal level, dB RSSI.
+	DistanceRanging_Valid bool
+	Squawk                int       // Squawk code
+	Position_valid        bool      //TODO: set when position report received. Unset after n seconds?
+	Lat                   float32   // decimal degrees, north positive
+	Lng                   float32   // decimal degrees, east positive
+	Alt                   int32     // Pressure altitude, feet
+	GnssDiffFromBaroAlt   int32     // GNSS altitude above WGS84 datum. Reported in TC 20-22 messages
+	AltIsGNSS             bool      // Pressure alt = 0; GNSS alt = 1
+	NIC                   int       // Navigation Integrity Category.
+	NACp                  int       // Navigation Accuracy Category for Position.
+	Track                 uint16    // degrees true
+	Speed                 uint16    // knots
+	Speed_valid           bool      // set when speed report received.
+	Vvel                  int16     // feet per minute
+	Timestamp             time.Time // timestamp of traffic message, UTC
+	PriorityStatus        uint8     // Emergency or priority code as defined in GDL90 spec, DO-260B (Type 28 msg) and DO-282B
 
 	// Parameters starting at 'Age' are calculated from last message receipt on each call of sendTrafficUpdates().
 	// Mode S transmits position and track in separate messages, and altitude can also be
@@ -161,11 +162,22 @@ var OwnshipTrafficInfo TrafficInfo
 var planeRegs *sql.DB
 var planeRegQuery *sql.Stmt
 
-func (t *TrafficInfo) addSignalLevelMeasurement(m float64) {
+func (t *TrafficInfo) addSignalLevelMeasurement(m float64, ranging bool) {
+	/* FIXME: Keep non ranging measurements apart */
+	if !ranging {
+		return
+	}
 	if len(t.SignalLevel) >= 50 {
 		t.SignalLevel = t.SignalLevel[1:]
 	}
 	t.SignalLevel = append(t.SignalLevel, m)
+
+	if !t.Position_valid {
+		/* Estimate from RSSI */
+		if len(t.SignalLevel) > 5 {
+			t.DistanceRanging_Valid = true
+		}
+	}
 }
 
 func convertFeetToMeters(feet float32) float32 {
@@ -210,16 +222,12 @@ func sendTrafficUpdates() {
 	}
 	code, _ := strconv.ParseInt(globalSettings.OwnshipModeS, 16, 32)
 	for icao, ti := range traffic { // ForeFlight 7.5 chokes at ~1000-2000 messages depending on iDevice RAM. Practical limit likely around ~500 aircraft without filtering.
-		if isGPSValid() {
+		if isGPSValid() && ti.Position_valid {
 			// func distRect(lat1, lon1, lat2, lon2 float64) (dist, bearing, distN, distE float64) {
 			dist, bearing := distance(float64(mySituation.GPSLatitude), float64(mySituation.GPSLongitude), float64(ti.Lat), float64(ti.Lng))
 			ti.Distance = dist
 			ti.Bearing = bearing
 			ti.BearingDist_valid = true
-		} else {
-			ti.Distance = 0
-			ti.Bearing = 0
-			ti.BearingDist_valid = false
 		}
 		ti.Age = stratuxClock.Since(ti.Last_seen).Seconds()
 		ti.AgeLastAlt = stratuxClock.Since(ti.Last_alt).Seconds()
@@ -580,7 +588,7 @@ func parseDownlinkReport(s string, signalLevel int) {
 	}
 	//log.Printf("%s (%X) seen with amplitude of %d, corresponding to normalized power of %f.2 dB\n",ti.Tail,ti.Icao_addr,signalLevel,power)
 
-	ti.addSignalLevelMeasurement(power)
+	ti.addSignalLevelMeasurement(power, false)
 
 	if ti.Addr_type == 0 {
 		ti.TargetType = TARGET_TYPE_ADSB
@@ -844,7 +852,7 @@ func esListen() {
 			}
 
 			if newTi.SignalLevel > 0 {
-				ti.addSignalLevelMeasurement(10 * math.Log10(newTi.SignalLevel))
+				ti.addSignalLevelMeasurement(10*math.Log10(newTi.SignalLevel), false)
 			}
 
 			// generate human readable summary of message types for debug
@@ -1166,7 +1174,7 @@ func esRangingListen() {
 			}
 
 			if newTi.SignalLevel > 0 {
-				ti.addSignalLevelMeasurement(10 * math.Log10(newTi.SignalLevel))
+				ti.addSignalLevelMeasurement(10*math.Log10(newTi.SignalLevel), true)
 			}
 			ti.Timestamp = newTi.Timestamp // only update "last seen" data on position updates
 
@@ -1394,7 +1402,6 @@ func icao2reg(icao_addr uint32) (string, bool) {
 		nationalOffset := uint32(0x7C0000)
 		offset := (icao_addr - nationalOffset)
 		i1 := offset / 1296
-		go esRangingListen()
 		offset2 := offset % 1296
 		i2 := offset2 / 36
 		offset3 := offset2 % 36
