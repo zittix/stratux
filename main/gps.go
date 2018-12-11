@@ -476,7 +476,7 @@ func calcGPSAttitude() bool {
 	index := length - 1
 
 	if length == 0 {
-		//log.Printf("GPS attitude: No data received yet. Not calculating attitude.\n")
+		log.Printf("GPS attitude: No data received yet. Not calculating attitude.\n")
 		return false
 	} else if length == 1 {
 		//log.Printf("myGPSPerfStats has one data point. Setting statistics to zero.\n")

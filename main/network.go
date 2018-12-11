@@ -649,7 +649,7 @@ func initNetwork() {
 	refreshConnectedClients()
 	go monitorDHCPLeases()
 	go messageQueueSender()
-	//go sleepMonitor()
+	go sleepMonitor()
 	go networkStatsCounter()
 	go serialOutWatcher()
 	go networkOutWatcher()

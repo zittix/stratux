@@ -1562,7 +1562,7 @@ func main() {
 		globalStatus.HardwareBuild = "FlightBox"
 		logDirf = logDir_FB
 	} else { // if not using the FlightBox config, use "normal" log file locations
-		logDirf = "."
+		logDirf = logDir
 	}
 	//Merlin: detect presence of /etc/Merlin file.
 	if _, err := os.Stat("/etc/Merlin"); !os.IsNotExist(err) {

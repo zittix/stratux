@@ -34,7 +34,7 @@ fancontrol:
 	go build $(BUILDINFO_STATIC) -p 4 main/fancontrol.go main/equations.go main/cputemp.go
 
 xdump1090:
-	#git submodule update --init
+	git submodule update --init
 	cd dump1090 && make
 
 xdump978:
