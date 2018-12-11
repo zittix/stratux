@@ -1682,7 +1682,7 @@ func main() {
 	})
 
 	// Start reading from serial UAT radio.
-	initUATRadioSerial()
+	//initUATRadioSerial()
 
 	reader := bufio.NewReader(os.Stdin)
 
