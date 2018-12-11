@@ -56,7 +56,6 @@ func makeFlarmPFLAU(nbTraffic int) (msg string) {
 	}
 	msg = (fmt.Sprintf("$%s*%02X\r\n", msg, checksum))
 
-	msg = msg
 	return
 }
 

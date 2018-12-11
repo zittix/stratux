@@ -78,15 +78,21 @@ const (
 	TARGET_TYPE_TISB   = 4
 )
 
+type RSSIEntry struct {
+	Icao_addr uint32
+	Rssi      float64
+	Timestamp time.Time
+}
+
 type TrafficInfo struct {
 	Icao_addr             uint32
-	Reg                   string    // Registration. Calculated from Icao_addr for civil aircraft of US registry.
-	Tail                  string    // Callsign. Transmitted by aircraft.
-	Emitter_category      uint8     // Formatted using GDL90 standard, e.g. in a Mode ES report, A7 becomes 0x07, B0 becomes 0x08, etc.
-	OnGround              bool      // Air-ground status. On-ground is "true".
-	Addr_type             uint8     // UAT address qualifier. Used by GDL90 format, so translations for ES TIS-B/ADS-R are needed.
-	TargetType            uint8     // types decribed in const above
-	SignalLevel           []float64 // Signal level, dB RSSI.
+	Reg                   string  // Registration. Calculated from Icao_addr for civil aircraft of US registry.
+	Tail                  string  // Callsign. Transmitted by aircraft.
+	Emitter_category      uint8   // Formatted using GDL90 standard, e.g. in a Mode ES report, A7 becomes 0x07, B0 becomes 0x08, etc.
+	OnGround              bool    // Air-ground status. On-ground is "true".
+	Addr_type             uint8   // UAT address qualifier. Used by GDL90 format, so translations for ES TIS-B/ADS-R are needed.
+	TargetType            uint8   // types decribed in const above
+	SignalLevel           float64 // Signal level, dB RSSI.
 	DistanceRanging_Valid bool
 	Squawk                int       // Squawk code
 	Position_valid        bool      //TODO: set when position report received. Unset after n seconds?
@@ -120,6 +126,7 @@ type TrafficInfo struct {
 	Bearing              float64   // Bearing in degrees true to traffic from ownship, if it can be calculated. Units: degrees.
 	Distance             float64   // Distance to traffic from ownship, if it can be calculated. Units: meters.
 	//FIXME: Rename variables for consistency, especially "Last_".
+	SignalMeasurements []RSSIEntry // RSSI estimation of this traffic measured with the SDR assigned to ranging
 }
 
 type dump1090Data struct {
@@ -162,19 +169,19 @@ var OwnshipTrafficInfo TrafficInfo
 var planeRegs *sql.DB
 var planeRegQuery *sql.Stmt
 
-func (t *TrafficInfo) addSignalLevelMeasurement(m float64, ranging bool) {
-	/* FIXME: Keep non ranging measurements apart */
-	if !ranging {
-		return
+func (t *TrafficInfo) addSignalLevelMeasurement(m float64) {
+	if len(t.SignalMeasurements) >= 50 {
+		t.SignalMeasurements = t.SignalMeasurements[1:]
 	}
-	if len(t.SignalLevel) >= 50 {
-		t.SignalLevel = t.SignalLevel[1:]
+	entry := RSSIEntry{t.Icao_addr, m, t.Timestamp}
+	t.SignalMeasurements = append(t.SignalMeasurements, entry)
+	if t.Icao_addr > 0 {
+		logSignalStrength(entry)
 	}
-	t.SignalLevel = append(t.SignalLevel, m)
 
 	if !t.Position_valid {
 		/* Estimate from RSSI */
-		if len(t.SignalLevel) > 5 {
+		if len(t.SignalMeasurements) > 5 {
 			t.DistanceRanging_Valid = true
 		}
 	}
@@ -588,7 +595,7 @@ func parseDownlinkReport(s string, signalLevel int) {
 	}
 	//log.Printf("%s (%X) seen with amplitude of %d, corresponding to normalized power of %f.2 dB\n",ti.Tail,ti.Icao_addr,signalLevel,power)
 
-	ti.addSignalLevelMeasurement(power, false)
+	ti.SignalLevel = power
 
 	if ti.Addr_type == 0 {
 		ti.TargetType = TARGET_TYPE_ADSB
@@ -852,7 +859,7 @@ func esListen() {
 			}
 
 			if newTi.SignalLevel > 0 {
-				ti.addSignalLevelMeasurement(10*math.Log10(newTi.SignalLevel), false)
+				ti.SignalLevel = 10 * math.Log10(newTi.SignalLevel)
 			}
 
 			// generate human readable summary of message types for debug
@@ -1173,10 +1180,11 @@ func esRangingListen() {
 				}
 			}
 
-			if newTi.SignalLevel > 0 {
-				ti.addSignalLevelMeasurement(10*math.Log10(newTi.SignalLevel), true)
-			}
 			ti.Timestamp = newTi.Timestamp // only update "last seen" data on position updates
+
+			if newTi.SignalLevel > 0 {
+				ti.addSignalLevelMeasurement(10 * math.Log10(newTi.SignalLevel))
+			}
 
 			traffic[ti.Icao_addr] = ti // Update information on this ICAO code.
 			registerTrafficUpdate(ti)

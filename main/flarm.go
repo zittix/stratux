@@ -402,7 +402,7 @@ func processAprsData(aprsData string) {
 		ti.Speed_valid = true
 
 		// set RSSI
-		ti.addSignalLevelMeasurement(data.SignalStrength, false)
+		ti.SignalLevel = data.SignalStrength
 
 		// add timestamp
 		// TODO use timestamp from FLARM message
