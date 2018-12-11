@@ -1,4 +1,7 @@
+// +build !mock
+
 // Package sensors provides a stratux interface to sensors used for AHRS calculations.
+
 package sensors
 
 import (

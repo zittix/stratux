@@ -14,8 +14,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	humanize "github.com/dustin/go-humanize"
-	"golang.org/x/net/websocket"
 	"io"
 	"io/ioutil"
 	"log"
@@ -28,6 +26,9 @@ import (
 	"syscall"
 	"text/template"
 	"time"
+
+	humanize "github.com/dustin/go-humanize"
+	"golang.org/x/net/websocket"
 )
 
 type SettingMessage struct {
@@ -275,6 +276,8 @@ func handleSettingsSetRequest(w http.ResponseWriter, r *http.Request) {
 						globalSettings.UAT_Enabled = val.(bool)
 					case "ES_Enabled":
 						globalSettings.ES_Enabled = val.(bool)
+					case "FLARM_Enabled":
+						globalSettings.FLARM_Enabled = val.(bool)
 					case "Ping_Enabled":
 						globalSettings.Ping_Enabled = val.(bool)
 					case "GPS_Enabled":
@@ -410,18 +413,6 @@ func handleSettingsSetRequest(w http.ResponseWriter, r *http.Request) {
 		settingsJSON, _ := json.Marshal(&globalSettings)
 		fmt.Fprintf(w, "%s\n", settingsJSON)
 	}
-}
-
-func handleShutdownRequest(w http.ResponseWriter, r *http.Request) {
-	syscall.Sync()
-	syscall.Reboot(syscall.LINUX_REBOOT_CMD_POWER_OFF)
-	gracefulShutdown()
-}
-
-func doReboot() {
-	syscall.Sync()
-	syscall.Reboot(syscall.LINUX_REBOOT_CMD_RESTART)
-	gracefulShutdown()
 }
 
 func handleDeleteLogFile(w http.ResponseWriter, r *http.Request) {

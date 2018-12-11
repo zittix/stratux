@@ -1,18 +1,23 @@
+// +build !mock
+
 package main
 
 import (
 	"encoding/json"
 	"flag"
 	"fmt"
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
-	"github.com/takama/daemon"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/takama/daemon"
+
+	"github.com/takama/daemon"
 )
 
 // #include <wiringPi.h>

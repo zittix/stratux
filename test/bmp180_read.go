@@ -1,7 +1,10 @@
+// +build !mock
+
 package main
 
 import (
 	"fmt"
+
 	"github.com/kidoman/embd"
 	_ "github.com/kidoman/embd/host/all"
 	"github.com/kidoman/embd/sensor/bmp180"

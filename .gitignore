@@ -1,11 +1,13 @@
 .idea/
 .vscode/
+main/stratux.log
 dump978/extract_nexrad
 dump978/uat2esnt
 dump978/uat2json
 dump978/uat2text
 gen_gdl90
 libdump978.so
+libdump978.a
 fancontrol
 
 *.mp4

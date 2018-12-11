@@ -14,13 +14,14 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
-	_ "github.com/mattn/go-sqlite3"
 	"log"
 	"os"
 	"reflect"
 	"strconv"
 	"strings"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 const (
@@ -476,6 +477,7 @@ func dataLog() {
 		makeTable(Dump1090TermMessage{}, "dump1090_terminal", db)
 		makeTable(gpsPerfStats{}, "gps_attitude", db)
 		makeTable(StratuxStartup{}, "startup", db)
+		makeTable(RSSIEntry{}, "signal_strength", db)
 	}
 
 	// The first entry to be created is the "startup" entry.
@@ -553,6 +555,12 @@ func logSettings() {
 func logTraffic(ti TrafficInfo) {
 	if globalSettings.ReplayLog && isDataLogReady() {
 		dataLogChan <- DataLogRow{tbl: "traffic", data: ti}
+	}
+}
+
+func logSignalStrength(entry RSSIEntry) {
+	if globalSettings.ReplayLog && isDataLogReady() {
+		dataLogChan <- DataLogRow{tbl: "signal_strength", data: entry}
 	}
 }
 

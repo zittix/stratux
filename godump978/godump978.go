@@ -19,10 +19,10 @@
 package godump978
 
 /*
-#cgo linux LDFLAGS: -ldump978 -lm
-#cgo darwin LDFLAGS: -ldump978 -lm
+#cgo linux LDFLAGS: -ldump978 -lm -L../
+#cgo darwin LDFLAGS: -ldump978 -lm -L../
 #cgo windows CFLAGS: -IC:/WINDOWS/system32
-#cgo windows LDFLAGS: -L. -ldump978 -LC:/WINDOWS/system32
+#cgo windows LDFLAGS: -L../ -L. -ldump978 -LC:/WINDOWS/system32
 
 #include <stdlib.h>
 #include <stdint.h>

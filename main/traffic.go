@@ -11,6 +11,7 @@ package main
 
 import (
 	"bufio"
+	"database/sql"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -21,6 +22,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 //-0b2b48fe3aef1f88621a0856110a31c01105c4e6c4e6c40a9a820300000000000000;rs=7;
@@ -63,6 +66,7 @@ AUXSV:
 const (
 	TRAFFIC_SOURCE_1090ES = 1
 	TRAFFIC_SOURCE_UAT    = 2
+	TRAFFIC_SOURCE_FLARM  = 4
 	TARGET_TYPE_MODE_S    = 0
 	TARGET_TYPE_ADSB      = 1
 	TARGET_TYPE_ADSR      = 2
@@ -74,30 +78,37 @@ const (
 	TARGET_TYPE_TISB   = 4
 )
 
+type RSSIEntry struct {
+	Icao_addr uint32
+	Rssi      float64
+	Timestamp time.Time
+}
+
 type TrafficInfo struct {
-	Icao_addr           uint32
-	Reg                 string    // Registration. Calculated from Icao_addr for civil aircraft of US registry.
-	Tail                string    // Callsign. Transmitted by aircraft.
-	Emitter_category    uint8     // Formatted using GDL90 standard, e.g. in a Mode ES report, A7 becomes 0x07, B0 becomes 0x08, etc.
-	OnGround            bool      // Air-ground status. On-ground is "true".
-	Addr_type           uint8     // UAT address qualifier. Used by GDL90 format, so translations for ES TIS-B/ADS-R are needed.
-	TargetType          uint8     // types decribed in const above
-	SignalLevel         float64   // Signal level, dB RSSI.
-	Squawk              int       // Squawk code
-	Position_valid      bool      //TODO: set when position report received. Unset after n seconds?
-	Lat                 float32   // decimal degrees, north positive
-	Lng                 float32   // decimal degrees, east positive
-	Alt                 int32     // Pressure altitude, feet
-	GnssDiffFromBaroAlt int32     // GNSS altitude above WGS84 datum. Reported in TC 20-22 messages
-	AltIsGNSS           bool      // Pressure alt = 0; GNSS alt = 1
-	NIC                 int       // Navigation Integrity Category.
-	NACp                int       // Navigation Accuracy Category for Position.
-	Track               uint16    // degrees true
-	Speed               uint16    // knots
-	Speed_valid         bool      // set when speed report received.
-	Vvel                int16     // feet per minute
-	Timestamp           time.Time // timestamp of traffic message, UTC
-	PriorityStatus      uint8     // Emergency or priority code as defined in GDL90 spec, DO-260B (Type 28 msg) and DO-282B
+	Icao_addr             uint32
+	Reg                   string  // Registration. Calculated from Icao_addr for civil aircraft of US registry.
+	Tail                  string  // Callsign. Transmitted by aircraft.
+	Emitter_category      uint8   // Formatted using GDL90 standard, e.g. in a Mode ES report, A7 becomes 0x07, B0 becomes 0x08, etc.
+	OnGround              bool    // Air-ground status. On-ground is "true".
+	Addr_type             uint8   // UAT address qualifier. Used by GDL90 format, so translations for ES TIS-B/ADS-R are needed.
+	TargetType            uint8   // types decribed in const above
+	SignalLevel           float64 // Signal level, dB RSSI.
+	DistanceRanging_Valid bool
+	Squawk                int       // Squawk code
+	Position_valid        bool      //TODO: set when position report received. Unset after n seconds?
+	Lat                   float32   // decimal degrees, north positive
+	Lng                   float32   // decimal degrees, east positive
+	Alt                   int32     // Pressure altitude, feet
+	GnssDiffFromBaroAlt   int32     // GNSS altitude above WGS84 datum. Reported in TC 20-22 messages
+	AltIsGNSS             bool      // Pressure alt = 0; GNSS alt = 1
+	NIC                   int       // Navigation Integrity Category.
+	NACp                  int       // Navigation Accuracy Category for Position.
+	Track                 uint16    // degrees true
+	Speed                 uint16    // knots
+	Speed_valid           bool      // set when speed report received.
+	Vvel                  int16     // feet per minute
+	Timestamp             time.Time // timestamp of traffic message, UTC
+	PriorityStatus        uint8     // Emergency or priority code as defined in GDL90 spec, DO-260B (Type 28 msg) and DO-282B
 
 	// Parameters starting at 'Age' are calculated from last message receipt on each call of sendTrafficUpdates().
 	// Mode S transmits position and track in separate messages, and altitude can also be
@@ -115,6 +126,7 @@ type TrafficInfo struct {
 	Bearing              float64   // Bearing in degrees true to traffic from ownship, if it can be calculated. Units: degrees.
 	Distance             float64   // Distance to traffic from ownship, if it can be calculated. Units: meters.
 	//FIXME: Rename variables for consistency, especially "Last_".
+	SignalMeasurements []RSSIEntry // RSSI estimation of this traffic measured with the SDR assigned to ranging
 }
 
 type dump1090Data struct {
@@ -154,6 +166,35 @@ var seenTraffic map[uint32]bool // Historical list of all ICAO addresses seen.
 
 var OwnshipTrafficInfo TrafficInfo
 
+var planeRegs *sql.DB
+var planeRegQuery *sql.Stmt
+
+func (t *TrafficInfo) addSignalLevelMeasurement(m float64) {
+	if len(t.SignalMeasurements) >= 50 {
+		t.SignalMeasurements = t.SignalMeasurements[1:]
+	}
+	entry := RSSIEntry{t.Icao_addr, m, t.Timestamp}
+	t.SignalMeasurements = append(t.SignalMeasurements, entry)
+	if t.Icao_addr > 0 {
+		logSignalStrength(entry)
+	}
+
+	if !t.Position_valid {
+		/* Estimate from RSSI */
+		if len(t.SignalMeasurements) > 5 {
+			t.DistanceRanging_Valid = true
+		}
+	}
+}
+
+func convertFeetToMeters(feet float32) float32 {
+	return feet * 0.3048
+}
+
+func convertMetersToFeet(meters float32) float32 {
+	return meters / 0.3048
+}
+
 func cleanupOldEntries() {
 	for icao_addr, ti := range traffic {
 		if stratuxClock.Since(ti.Last_seen) > 60*time.Second { // keep it in the database for up to 60 seconds, so we don't lose tail number, etc...
@@ -180,22 +221,20 @@ func sendTrafficUpdates() {
 	}
 
 	msgs := make([][]byte, 1)
+	msgFLARM := ""
+	numFLARMTargets := 0
 	if globalSettings.DEBUG && (stratuxClock.Time.Second()%15) == 0 {
 		log.Printf("List of all aircraft being tracked:\n")
 		log.Printf("==================================================================\n")
 	}
 	code, _ := strconv.ParseInt(globalSettings.OwnshipModeS, 16, 32)
 	for icao, ti := range traffic { // ForeFlight 7.5 chokes at ~1000-2000 messages depending on iDevice RAM. Practical limit likely around ~500 aircraft without filtering.
-		if isGPSValid() {
+		if isGPSValid() && ti.Position_valid {
 			// func distRect(lat1, lon1, lat2, lon2 float64) (dist, bearing, distN, distE float64) {
 			dist, bearing := distance(float64(mySituation.GPSLatitude), float64(mySituation.GPSLongitude), float64(ti.Lat), float64(ti.Lng))
 			ti.Distance = dist
 			ti.Bearing = bearing
 			ti.BearingDist_valid = true
-		} else {
-			ti.Distance = 0
-			ti.Bearing = 0
-			ti.BearingDist_valid = false
 		}
 		ti.Age = stratuxClock.Since(ti.Last_seen).Seconds()
 		ti.AgeLastAlt = stratuxClock.Since(ti.Last_alt).Seconds()
@@ -233,6 +272,15 @@ func sendTrafficUpdates() {
 					msgs = append(msgs, make([]byte, 0))
 				}
 				msgs[cur_n] = append(msgs[cur_n], makeTrafficReportMsg(ti)...)
+
+				thisMsgFLARM, validFLARM := makeFlarmPFLAAString(ti)
+				if validFLARM {
+					msgFLARM = msgFLARM + thisMsgFLARM
+					numFLARMTargets++
+					//log.Printf(thisMsgFLARM)
+				} else {
+					log.Printf("FLARM output: Traffic %X couldn't be translated\n", ti.Icao_addr)
+				}
 			}
 		}
 	}
@@ -243,6 +291,19 @@ func sendTrafficUpdates() {
 			sendGDL90(msg, false)
 		}
 	}
+
+	// netFLARM messages:
+	sendNetFLARM(makeGPRMCString())
+	sendNetFLARM(makeGPGGAString())
+	sendNetFLARM(makeFlarmPGRMZ(5000))
+	sendNetFLARM(makeFlarmGPGSA())
+	msgPFLAU := makeFlarmPFLAU(numFLARMTargets)
+
+	sendNetFLARM(msgPFLAU)
+	if len(msgFLARM) > 0 {
+		sendNetFLARM(msgFLARM)
+	}
+
 }
 
 // Send update to attached JSON client.
@@ -799,8 +860,6 @@ func esListen() {
 
 			if newTi.SignalLevel > 0 {
 				ti.SignalLevel = 10 * math.Log10(newTi.SignalLevel)
-			} else {
-				ti.SignalLevel = -999
 			}
 
 			// generate human readable summary of message types for debug
@@ -1045,6 +1104,98 @@ func esListen() {
 	}
 }
 
+func esRangingListen() {
+	for {
+		if !globalSettings.ESRanging_Enabled {
+			time.Sleep(1 * time.Second) // Don't do much unless ES is actually enabled.
+			continue
+		}
+		dump1090Addr := "127.0.0.1:30007"
+		inConn, err := net.Dial("tcp", dump1090Addr)
+		if err != nil { // Local connection failed.
+			time.Sleep(1 * time.Second)
+			continue
+		}
+		rdr := bufio.NewReader(inConn)
+		for globalSettings.ESRanging_Enabled {
+			buf, err := rdr.ReadString('\n')
+			if err != nil { // Must have disconnected?
+				break
+			}
+			buf = strings.Trim(buf, "\r\n")
+
+			// Log the message to the message counter in any case.
+			var thisMsg msg
+			thisMsg.MessageClass = MSGCLASS_ESRANGING
+			thisMsg.TimeReceived = stratuxClock.Time
+			thisMsg.Data = buf
+			MsgLog = append(MsgLog, thisMsg)
+
+			var eslog esmsg
+			eslog.TimeReceived = stratuxClock.Time
+			eslog.Data = buf
+			logESMsg(eslog) // log raw dump1090:30006 output to SQLite log
+
+			var newTi *dump1090Data
+			err = json.Unmarshal([]byte(buf), &newTi)
+			if err != nil {
+				log.Printf("can't read ES traffic information from %s: %s\n", buf, err.Error())
+				continue
+			}
+
+			if newTi.Icao_addr == 0x07FFFFFF { // used to signal heartbeat
+				if globalSettings.DEBUG {
+					log.Printf("No traffic last 60 seconds. Heartbeat message from dump1090: %s\n", buf)
+				}
+				continue // don't process heartbeat messages
+			}
+
+			if (newTi.Icao_addr & 0x01000000) != 0 { // bit 25 used by dump1090 to signal non-ICAO address
+				newTi.Icao_addr = newTi.Icao_addr & 0x00FFFFFF
+				if globalSettings.DEBUG {
+					log.Printf("Non-ICAO address %X sent by dump1090. This is typical for TIS-B.\n", newTi.Icao_addr)
+				}
+			}
+			icao := uint32(newTi.Icao_addr)
+			var ti TrafficInfo
+
+			trafficMutex.Lock()
+
+			// Retrieve previous information on this ICAO code.
+			if val, ok := traffic[icao]; ok { // if we've already seen it, copy it in to do updates
+				ti = val
+				//log.Printf("Existing target %X imported for ES update\n", icao)
+			} else {
+				//log.Printf("New target %X created for ES update\n",newTi.Icao_addr)
+				ti.Last_seen = stratuxClock.Time // need to initialize to current stratuxClock so it doesn't get cut before we have a chance to populate a position message
+				ti.Last_alt = stratuxClock.Time  // ditto.
+				ti.Icao_addr = icao
+				ti.ExtrapolatedPosition = false
+				ti.Last_source = TRAFFIC_SOURCE_1090ES
+
+				thisReg, validReg := icao2reg(icao)
+				if validReg {
+					ti.Reg = thisReg
+					ti.Tail = thisReg
+				}
+			}
+
+			ti.Timestamp = newTi.Timestamp // only update "last seen" data on position updates
+
+			if newTi.SignalLevel > 0 {
+				ti.addSignalLevelMeasurement(10 * math.Log10(newTi.SignalLevel))
+			}
+
+			traffic[ti.Icao_addr] = ti // Update information on this ICAO code.
+			registerTrafficUpdate(ti)
+			seenTraffic[ti.Icao_addr] = true // Mark as seen.
+			//log.Printf("%v\n",traffic)
+			trafficMutex.Unlock()
+
+		}
+	}
+}
+
 /*
 updateDemoTraffic creates / updates a simulated traffic target for demonstration / debugging
 purpose. Target will circle clockwise around the current GPS position (if valid) or around
@@ -1151,6 +1302,24 @@ func updateDemoTraffic(icao uint32, tail string, relAlt float32, gs float64, off
 	}
 }
 
+func openPlaneRegsDB() bool {
+	var planeDBFile = "/usr/lib/stratux/plane_regs.sqlite3"
+	log.Printf("Opening plane registratin database at %s...\n", planeDBFile)
+	planeRegs, err := sql.Open("sqlite3", planeDBFile)
+	if err != nil {
+		log.Printf("sql.Open for plane registration database: %s\n", err.Error())
+		return false
+	}
+	planeRegQuery, err = planeRegs.Prepare("select registration from plane_registrations where transponder = ?")
+	if err != nil {
+		log.Printf("sql.Prepare for plane registration database: %s\n", err.Error())
+		planeRegs.Close()
+		planeRegs = nil
+		return false
+	}
+	return true
+}
+
 /*
 	icao2reg() : Converts 24-bit Mode S addresses to N-numbers and C-numbers.
 
@@ -1194,8 +1363,18 @@ func icao2reg(icao_addr uint32) (string, bool) {
 	} else if (icao_addr >= 0x7C0000) && (icao_addr <= 0x7FFFFF) {
 		nation = "AU"
 	} else {
-		//TODO: future national decoding.
-		return "OTHER", false
+		// Lookup our database
+		if planeRegQuery != nil {
+			var name string
+			err := planeRegQuery.QueryRow(icao_addr).Scan(&name)
+			if err != nil {
+				if err != sql.ErrNoRows {
+					log.Printf("Error while doing plane registration query: %s\n", err.Error())
+				}
+				return "NON-NA", false
+			}
+			return name, true
+		}
 	}
 
 	if nation == "CA" { // Canada decoding
@@ -1323,5 +1502,8 @@ func initTraffic() {
 	traffic = make(map[uint32]TrafficInfo)
 	seenTraffic = make(map[uint32]bool)
 	trafficMutex = &sync.Mutex{}
+	openPlaneRegsDB()
 	go esListen()
+	go esRangingListen()
+	go flarmListen()
 }
