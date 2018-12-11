@@ -13,12 +13,40 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/takama/daemon"
+
 	"github.com/takama/daemon"
 )
 
 // #include <wiringPi.h>
 // #cgo LDFLAGS: -lwiringPi
 import "C"
+
+// Initialize Prometheus metrics.
+var (
+	currentTemp = prometheus.NewGauge(prometheus.GaugeOpts{
+		Name: "current_temp",
+		Help: "Current CPU temp.",
+	})
+
+	totalFanOnTime = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "total_fan_on_time",
+			Help: "Total fan run time.",
+		},
+		[]string{"all"},
+	)
+
+	totalUptime = prometheus.NewCounterVec(
+		prometheus.CounterOpts{
+			Name: "total_uptime",
+			Help: "Total uptime.",
+		},
+		[]string{"all"},
+	)
+)
 
 const (
 	// CPU temperature target, degrees C
@@ -63,7 +91,25 @@ var myFanControl FanControl
 
 var stdlog, errlog *log.Logger
 
+func updateStats() {
+	updateTicker := time.NewTicker(1 * time.Second)
+	for {
+		<-updateTicker.C
+		totalUptime.With(prometheus.Labels{"all": "all"}).Inc()
+		currentTemp.Set(float64(myFanControl.TempCurrent))
+		if myFanControl.PWMDutyCurrent > 0 {
+			totalFanOnTime.With(prometheus.Labels{"all": "all"}).Inc()
+		}
+	}
+}
+
 func fanControl() {
+	prometheus.MustRegister(currentTemp)
+	prometheus.MustRegister(totalFanOnTime)
+	prometheus.MustRegister(totalUptime)
+
+	go updateStats()
+
 	cPin := C.int(myFanControl.PWMPin)
 
 	C.wiringPiSetup()
@@ -160,6 +206,7 @@ func (service *Service) Manage() (string, error) {
 	signal.Notify(interrupt, os.Interrupt, os.Kill, syscall.SIGTERM)
 
 	http.HandleFunc("/", handleStatusRequest)
+	http.Handle("/metrics", promhttp.Handler())
 	http.ListenAndServe(addr, nil)
 
 	// interrupt by system signal
